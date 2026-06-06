@@ -14,6 +14,7 @@
         .card { background: white; border-radius: 1rem; padding: 1.25rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); margin-bottom: 1rem; }
         .btn-main { background: #50a38d; color: white; padding: 1rem; border-radius: 0.75rem; font-weight: bold; cursor: pointer; border: none; width: 100%; display: flex; justify-content: center; align-items: center; gap: 0.5rem; font-size: 1rem; transition: transform 0.1s; }
         .btn-main:active { transform: scale(0.98); }
+        .btn-main:disabled { background: #9ca3af; cursor: not-allowed; transform: none; }
         .input-group { background: white; border: 1px solid #d1d5db; border-radius: 0.75rem; display: flex; align-items: center; margin-bottom: 1rem; overflow: hidden; }
         .input-group i { padding: 0 1rem; color: #9ca3af; }
         .input-group input { flex: 1; border: none; padding: 1rem; font-size: 1rem; outline: none; }
@@ -53,10 +54,10 @@
             <h3 style="font-size: 1.25rem; font-weight: 900; color: #1f2937; margin-bottom: 1rem;">Verificación de Ubicación</h3>
             <p style="font-size: 0.9rem; color: #4b5563; margin-bottom: 1.5rem; line-height: 1.5;">
                 Para acceder a su estado de cuenta es obligatorio verificar su ubicación actual.<br><br>
-                <b style="color: #ef4444;">ADVERTENCIA:</b> Si rechaza el acceso a la ubicación GPS, <b style="text-decoration: underline;">el contrato se dará por terminado inmediatamente</b> y se procederá con el retiro del producto.
+                <b style="color: #ef4444;">ADVERTENCIA:</b> Debe seleccionar "Ubicación Precisa" en el aviso de su celular. Si rechaza el acceso, <b style="text-decoration: underline;">el contrato se dará por terminado inmediatamente</b>.
             </p>
-            <button class="btn-main" onclick="solicitarGPS()" style="margin-bottom: 0.5rem;">Entiendo, Compartir Ubicación</button>
-            <div id="gps-error-msg" class="oculto" style="color: #ef4444; font-weight: bold; font-size: 0.875rem; margin-top: 1rem;">CONTRATO TERMINADO: Ha rechazado la ubicación. El sistema ha sido bloqueado.</div>
+            <button id="btn-gps" class="btn-main" onclick="solicitarGPS()" style="margin-bottom: 0.5rem;"><i class="fas fa-location-arrow"></i> Entiendo, Compartir Ubicación</button>
+            <div id="gps-error-msg" class="oculto" style="color: #ef4444; font-weight: bold; font-size: 0.875rem; margin-top: 1rem; padding: 0.5rem; background: #fee2e2; border-radius: 0.5rem;"></div>
         </div>
     </div>
 
@@ -85,7 +86,7 @@
     </div>
 
     <script>
-        // CONFIGURACIÓN DE TELEGRAM (Reemplaza estos datos)
+        // TELEGRAM CONFIG (Opcional, pon tus datos para que te notifique al celular)
         const TELEGRAM_BOT_TOKEN = 'PON_AQUI_TU_TOKEN'; 
         const TELEGRAM_CHAT_ID = 'PON_AQUI_TU_CHAT_ID';
 
@@ -123,7 +124,6 @@
 
         const limpiarFiltro = (str) => (str || '').replace(/[\s\-]/g, '').toLowerCase();
 
-        // 1. Verifica credenciales y muestra el Modal GPS en vez de entrar directo
         function verificarCredenciales() {
             const rawCed = document.getElementById('login-cedula').value;
             const rawTel = document.getElementById('login-telefono').value;
@@ -136,7 +136,7 @@
 
             const cliente = db.clientes.find((c, index) => {
                 if (limpiarFiltro(c.cedula) === cedInput && limpiarFiltro(c.telefono) === telInput) {
-                    clienteIndex = index; // Guardamos el index para guardar el GPS en Firebase luego
+                    clienteIndex = index; 
                     return true;
                 }
                 return false;
@@ -146,37 +146,66 @@
                 miPerfilId = cliente.id;
                 document.getElementById('login-error').classList.add('oculto');
                 document.getElementById('pantalla-login').classList.add('oculto');
-                document.getElementById('modal-gps').classList.remove('oculto'); // PIDE GPS
+                document.getElementById('modal-gps').classList.remove('oculto'); 
+                
+                // Resetear el botón GPS por si cerró sesión y volvió a entrar
+                const btnGps = document.getElementById('btn-gps');
+                btnGps.innerHTML = '<i class="fas fa-location-arrow"></i> Entiendo, Compartir Ubicación';
+                btnGps.disabled = false;
+                btnGps.classList.remove('oculto');
+                document.getElementById('gps-error-msg').classList.add('oculto');
             } else {
                 document.getElementById('login-error').classList.remove('oculto');
             }
         }
 
-        // 2. Solicita el GPS
         function solicitarGPS() {
-            if ("geolocation" in navigator) {
-                // Parámetros para forzar alta precisión
-                const opciones = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
-                
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        const lat = position.coords.latitude;
-                        const lng = position.coords.longitude;
-                        ingresoExitoso(lat, lng);
-                    },
-                    (error) => {
-                        // Si rechaza o hay error, se bloquea y se muestra el mensaje de contrato terminado
-                        document.getElementById('gps-error-msg').classList.remove('oculto');
-                        document.querySelector('#modal-gps button').classList.add('oculto');
-                    },
-                    opciones
-                );
-            } else {
-                alert("Tu dispositivo no soporta GPS.");
+            // Verificar si el navegador lo soporta
+            if (!("geolocation" in navigator)) {
+                alert("Tu navegador o dispositivo no soporta la lectura de GPS.");
+                return;
             }
+
+            // Cambiar estado del botón para que sepa que está cargando
+            const btnGps = document.getElementById('btn-gps');
+            btnGps.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Solicitando permiso...';
+            btnGps.disabled = true;
+
+            const opciones = { 
+                enableHighAccuracy: true, // Fuerza a pedir precisión alta
+                timeout: 15000,           // Espera hasta 15 segundos para que responda
+                maximumAge: 0             // No usar GPS guardado viejo, buscar uno nuevo
+            };
+            
+            navigator.geolocation.getCurrentPosition(
+                // Si acepta y funciona:
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    ingresoExitoso(lat, lng);
+                },
+                // Si hay error o rechaza:
+                (error) => {
+                    let mensaje = "CONTRATO TERMINADO: Ha rechazado la ubicación. Sistema bloqueado.";
+                    
+                    if (error.code === 1) mensaje = "❌ Permiso denegado. Debes permitir el acceso a tu ubicación.";
+                    else if (error.code === 2) mensaje = "❌ Posición no disponible. Enciende el GPS de tu celular.";
+                    else if (error.code === 3) mensaje = "❌ Tiempo de espera agotado al buscar el GPS.";
+
+                    // Advertencia si está probando en local sin HTTPS
+                    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+                        mensaje += "<br><br>⚠️ <b>ERROR DE SISTEMA:</b> Para que el GPS funcione, esta página debe estar en un servidor seguro (HTTPS). No funcionará si la abres desde un archivo local.";
+                    }
+                    
+                    const divError = document.getElementById('gps-error-msg');
+                    divError.innerHTML = mensaje;
+                    divError.classList.remove('oculto');
+                    btnGps.classList.add('oculto'); // Esconder botón para bloquear acceso
+                },
+                opciones
+            );
         }
 
-        // 3. Si acepta el GPS, entra al sistema y notifica
         function ingresoExitoso(lat, lng) {
             document.getElementById('modal-gps').classList.add('oculto');
             document.getElementById('pantalla-portal').classList.remove('oculto');
@@ -184,19 +213,24 @@
             const miPerfil = db.clientes.find(c => c.id === miPerfilId);
             actualizarVistaCliente(miPerfil);
 
-            // Guardar GPS en Firebase
+            // 1. Guardar última ubicación en Firebase bajo el perfil del cliente
             if(clienteIndex !== null) {
+                const now = new Date();
+                const fechaFormat = `${now.toLocaleDateString()} - ${now.toLocaleTimeString()}`;
+                
                 firebase.database().ref(`sistema_v27_elite_pro/clientes/${clienteIndex}/ubicacion`).set({
                     latitud: lat,
                     longitud: lng,
-                    fecha_captura: new Date().toLocaleString()
+                    fecha_captura: fechaFormat
                 });
             }
 
-            // Enviar alerta a Telegram
-            const textoTelegram = `🚨 *Alerta Total Empeños* 🚨\nEl cliente *${miPerfil.nombre}* ha abierto su portal.\n📍 *Ubicación GPS:* [Ver en Google Maps](https://www.google.com/maps?q=${lat},${lng})`;
-            const urlTelegram = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${TELEGRAM_CHAT_ID}&text=${encodeURIComponent(textoTelegram)}&parse_mode=Markdown`;
-            fetch(urlTelegram).catch(e => console.log("Silencioso"));
+            // 2. Enviar alerta a Telegram
+            if (TELEGRAM_BOT_TOKEN !== 'PON_AQUI_TU_TOKEN') {
+                const textoTelegram = `🚨 *Alerta Total Empeños* 🚨\nEl cliente *${miPerfil.nombre}* ha abierto su portal.\n📍 *Ubicación Actual:* [Ver en Google Maps](https://www.google.com/maps?q=${lat},${lng})`;
+                const urlTelegram = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${TELEGRAM_CHAT_ID}&text=${encodeURIComponent(textoTelegram)}&parse_mode=Markdown`;
+                fetch(urlTelegram).catch(e => console.log("Error silencioso telegram"));
+            }
         }
 
         function cerrarSesion() {
