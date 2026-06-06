@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Cuenta - Portal del Cliente</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #f3f4f6; color: #1f2937; font-family: system-ui, sans-serif; margin: 0; }
+        .oculto { display: none !important; }
+        .card { background: white; border-radius: 1rem; padding: 1.25rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); margin-bottom: 1rem; }
+        .btn-main { background: #50a38d; color: white; padding: 1rem; border-radius: 0.75rem; font-weight: bold; cursor: pointer; border: none; width: 100%; display: flex; justify-content: center; align-items: center; gap: 0.5rem; font-size: 1rem; transition: transform 0.1s; }
+        .btn-main:active { transform: scale(0.98); }
+        .input-group { background: white; border: 1px solid #d1d5db; border-radius: 0.75rem; display: flex; align-items: center; margin-bottom: 1rem; overflow: hidden; }
+        .input-group i { padding: 0 1rem; color: #9ca3af; }
+        .input-group input { flex: 1; border: none; padding: 1rem; font-size: 1rem; outline: none; }
+        .header-bg { background: linear-gradient(to bottom right, #153e36, #50a38d); color: white; padding: 2rem 1.5rem; border-radius: 0 0 2rem 2rem; text-align: center; }
+        .badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: bold; }
+        .logo-sys { max-height: 5rem; object-fit: contain; margin: 0 auto 1rem auto; display: block; }
+        
+        /* Estilos del modal GPS */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 1.5rem; backdrop-filter: blur(4px); }
+    </style>
+</head>
+<body>
+
+    <div id="pantalla-login" style="height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; background: #153e36; padding: 1.5rem;">
+        <div class="card" style="width: 100%; max-width: 24rem; text-align: center; padding: 2rem 1.5rem;">
+            <img class="logo-sys oculto">
+            <h2 class="nombre-empresa-dyn" style="color: #153e36; font-size: 1.5rem; font-weight: 900; margin-bottom: 0.5rem;">Total Empeños</h2>
+            <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 2rem;">Ingresa a tu portal de cliente</p>
+            
+            <div class="input-group">
+                <i class="fas fa-id-card"></i>
+                <input type="text" id="login-cedula" placeholder="Tu Cédula (con o sin guiones)">
+            </div>
+            <div class="input-group">
+                <i class="fas fa-phone"></i>
+                <input type="password" id="login-telefono" placeholder="Tu Celular / WhatsApp">
+            </div>
+            
+            <button class="btn-main" onclick="verificarCredenciales()">Ingresar a mi cuenta</button>
+            <div id="login-error" class="oculto" style="color: #ef4444; font-size: 0.875rem; margin-top: 1rem; font-weight: bold;">Credenciales incorrectas. Verifica tu datos.</div>
+        </div>
+    </div>
+
+    <div id="modal-gps" class="modal-overlay oculto">
+        <div class="card" style="max-width: 24rem; text-align: center; padding: 2rem 1.5rem;">
+            <i class="fas fa-map-marker-alt" style="font-size: 3rem; color: #ef4444; margin-bottom: 1rem;"></i>
+            <h3 style="font-size: 1.25rem; font-weight: 900; color: #1f2937; margin-bottom: 1rem;">Verificación de Ubicación</h3>
+            <p style="font-size: 0.9rem; color: #4b5563; margin-bottom: 1.5rem; line-height: 1.5;">
+                Para acceder a su estado de cuenta es obligatorio verificar su ubicación actual.<br><br>
+                <b style="color: #ef4444;">ADVERTENCIA:</b> Si rechaza el acceso a la ubicación GPS, <b style="text-decoration: underline;">el contrato se dará por terminado inmediatamente</b> y se procederá con el retiro del producto.
+            </p>
+            <button class="btn-main" onclick="solicitarGPS()" style="margin-bottom: 0.5rem;">Entiendo, Compartir Ubicación</button>
+            <div id="gps-error-msg" class="oculto" style="color: #ef4444; font-weight: bold; font-size: 0.875rem; margin-top: 1rem;">CONTRATO TERMINADO: Ha rechazado la ubicación. El sistema ha sido bloqueado.</div>
+        </div>
+    </div>
+
+    <div id="pantalla-portal" class="oculto">
+        <div class="header-bg">
+            <img class="logo-sys oculto" style="height: 3.5rem; margin-bottom: 0.5rem;">
+            <h1 style="font-size: 1.25rem; font-weight: bold; margin-bottom: 0.5rem;"><span class="nombre-empresa-dyn">Total Empeños</span></h1>
+            <p style="font-size: 0.875rem; opacity: 0.9; margin-bottom: 1.5rem;">Hola, <span id="ui-nombre" style="font-weight: bold;"></span></p>
+            <div style="background: rgba(255,255,255,0.2); border-radius: 1rem; padding: 1.5rem;">
+                <span style="font-size: 0.875rem; font-weight: bold; text-transform: uppercase; opacity: 0.9;">Deuda Total Actual</span><br>
+                <b style="font-size: 2.5rem; font-weight: 900;" id="ui-saldo-global">$0.00</b>
+            </div>
+        </div>
+
+        <div style="padding: 1.5rem; max-width: 600px; margin: 0 auto;">
+            <div id="caja-nota" class="card oculto">
+                <b id="ui-nota-titulo" style="font-size: 0.875rem; display: block; margin-bottom: 0.25rem;"><i class="fas fa-exclamation-circle"></i> Tienes un mensaje:</b>
+                <p id="ui-nota-texto" style="font-size: 0.9375rem; font-weight: 500; white-space: pre-wrap;"></p>
+            </div>
+            <h3 style="font-weight: bold; color: #1f2937; margin-bottom: 1rem; font-size: 1.125rem;"><i class="fas fa-box-open" style="color: #50a38d;"></i> Créditos Activos</h3>
+            <div id="lista-activos"></div>
+            <h3 style="font-weight: bold; color: #1f2937; margin-top: 2rem; margin-bottom: 1rem; font-size: 1.125rem;"><i class="fas fa-history" style="color: #3b82f6;"></i> Últimos Pagos</h3>
+            <div class="card" style="padding: 0; overflow: hidden;"><div id="lista-pagos"></div></div>
+            <button class="btn-main" style="background: #ef4444; margin-top: 2rem;" onclick="cerrarSesion()"><i class="fas fa-sign-out-alt"></i> Cerrar Sesión</button>
+        </div>
+    </div>
+
+    <script>
+        // CONFIGURACIÓN DE TELEGRAM (Reemplaza estos datos)
+        const TELEGRAM_BOT_TOKEN = 'PON_AQUI_TU_TOKEN'; 
+        const TELEGRAM_CHAT_ID = 'PON_AQUI_TU_CHAT_ID';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyD8QbMs2k2IkqNJt0AdqwGYI4X_h93qfe0",
+            authDomain: "venta-a-credito-ea35d.firebaseapp.com",
+            databaseURL: "https://venta-a-credito-ea35d-default-rtdb.firebaseio.com",
+            projectId: "venta-a-credito-ea35d",
+            storageBucket: "venta-a-credito-ea35d.firebasestorage.app"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const dbRef = firebase.database().ref('sistema_v27_elite_pro');
+
+        let db = null;
+        let miPerfilId = null;
+        let clienteIndex = null; 
+
+        dbRef.on('value', (snap) => {
+            if (snap.val()) {
+                db = snap.val();
+                aplicarConfig();
+            }
+        });
+
+        function aplicarConfig() {
+            if (!db || !db.config) return;
+            const nombreEmpresa = db.config.empresa || 'Total Empeños';
+            document.querySelectorAll('.nombre-empresa-dyn').forEach(el => el.innerText = nombreEmpresa);
+            if (db.config.logo) {
+                document.querySelectorAll('.logo-sys').forEach(img => {
+                    img.src = db.config.logo; img.classList.remove('oculto');
+                });
+            }
+        }
+
+        const limpiarFiltro = (str) => (str || '').replace(/[\s\-]/g, '').toLowerCase();
+
+        // 1. Verifica credenciales y muestra el Modal GPS en vez de entrar directo
+        function verificarCredenciales() {
+            const rawCed = document.getElementById('login-cedula').value;
+            const rawTel = document.getElementById('login-telefono').value;
+            if (!rawCed || !rawTel) return alert("Por favor ingresa Cédula y Teléfono.");
+
+            const cedInput = limpiarFiltro(rawCed);
+            const telInput = limpiarFiltro(rawTel);
+
+            if (!db || !db.clientes) return alert("Conectando con el servidor...");
+
+            const cliente = db.clientes.find((c, index) => {
+                if (limpiarFiltro(c.cedula) === cedInput && limpiarFiltro(c.telefono) === telInput) {
+                    clienteIndex = index; // Guardamos el index para guardar el GPS en Firebase luego
+                    return true;
+                }
+                return false;
+            });
+
+            if (cliente) {
+                miPerfilId = cliente.id;
+                document.getElementById('login-error').classList.add('oculto');
+                document.getElementById('pantalla-login').classList.add('oculto');
+                document.getElementById('modal-gps').classList.remove('oculto'); // PIDE GPS
+            } else {
+                document.getElementById('login-error').classList.remove('oculto');
+            }
+        }
+
+        // 2. Solicita el GPS
+        function solicitarGPS() {
+            if ("geolocation" in navigator) {
+                // Parámetros para forzar alta precisión
+                const opciones = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
+                
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        ingresoExitoso(lat, lng);
+                    },
+                    (error) => {
+                        // Si rechaza o hay error, se bloquea y se muestra el mensaje de contrato terminado
+                        document.getElementById('gps-error-msg').classList.remove('oculto');
+                        document.querySelector('#modal-gps button').classList.add('oculto');
+                    },
+                    opciones
+                );
+            } else {
+                alert("Tu dispositivo no soporta GPS.");
+            }
+        }
+
+        // 3. Si acepta el GPS, entra al sistema y notifica
+        function ingresoExitoso(lat, lng) {
+            document.getElementById('modal-gps').classList.add('oculto');
+            document.getElementById('pantalla-portal').classList.remove('oculto');
+            
+            const miPerfil = db.clientes.find(c => c.id === miPerfilId);
+            actualizarVistaCliente(miPerfil);
+
+            // Guardar GPS en Firebase
+            if(clienteIndex !== null) {
+                firebase.database().ref(`sistema_v27_elite_pro/clientes/${clienteIndex}/ubicacion`).set({
+                    latitud: lat,
+                    longitud: lng,
+                    fecha_captura: new Date().toLocaleString()
+                });
+            }
+
+            // Enviar alerta a Telegram
+            const textoTelegram = `🚨 *Alerta Total Empeños* 🚨\nEl cliente *${miPerfil.nombre}* ha abierto su portal.\n📍 *Ubicación GPS:* [Ver en Google Maps](https://www.google.com/maps?q=${lat},${lng})`;
+            const urlTelegram = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${TELEGRAM_CHAT_ID}&text=${encodeURIComponent(textoTelegram)}&parse_mode=Markdown`;
+            fetch(urlTelegram).catch(e => console.log("Silencioso"));
+        }
+
+        function cerrarSesion() {
+            miPerfilId = null; clienteIndex = null;
+            document.getElementById('login-cedula').value = '';
+            document.getElementById('login-telefono').value = '';
+            document.getElementById('pantalla-portal').classList.add('oculto');
+            document.getElementById('pantalla-login').classList.remove('oculto');
+        }
+
+        function actualizarVistaCliente(miPerfil) {
+            document.getElementById('ui-nombre').innerText = miPerfil.nombre;
+
+            const cajaNota = document.getElementById('caja-nota');
+            const txtNota = document.getElementById('ui-nota-texto');
+            const titNota = document.getElementById('ui-nota-titulo');
+
+            if (miPerfil.notaAlCliente && miPerfil.notaAlCliente.trim() !== '') {
+                txtNota.innerText = miPerfil.notaAlCliente; cajaNota.classList.remove('oculto');
+                const color = miPerfil.notaColor || 'verde';
+                if(color === 'verde') { cajaNota.style.background = '#dcfce7'; cajaNota.style.borderLeft = '4px solid #22c55e'; titNota.style.color = '#166534'; txtNota.style.color = '#14532d'; } 
+                else if(color === 'naranja') { cajaNota.style.background = '#fef3c7'; cajaNota.style.borderLeft = '4px solid #f59e0b'; titNota.style.color = '#92400e'; txtNota.style.color = '#713f12'; } 
+                else if(color === 'rojo') { cajaNota.style.background = '#fee2e2'; cajaNota.style.borderLeft = '4px solid #ef4444'; titNota.style.color = '#991b1b'; txtNota.style.color = '#7f1d1d'; }
+            } else { cajaNota.classList.add('oculto'); }
+
+            let saldoTotal = 0; let htmlActivos = ''; let htmlFinalizados = ''; let htmlPagos = '';
+
+            if (miPerfil.creditos && miPerfil.creditos.length > 0) {
+                [...miPerfil.creditos].reverse().forEach(cr => {
+                    saldoTotal += cr.saldo;
+                    const tarjetaHtml = `<div class="card" style="border-left: 4px solid ${cr.saldo > 0 ? '#ef4444' : '#22c55e'};"><div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;"><b style="font-size: 1rem;">${cr.producto}</b><span class="badge" style="background: ${cr.saldo > 0 ? '#fef2f2' : '#f0fdfa'}; color: ${cr.saldo > 0 ? '#ef4444' : '#22c55e'};">${cr.saldo > 0 ? 'Activo' : 'Finalizado'}</span></div><p style="font-size: 0.75rem; color: #6b7280; margin-bottom: 0.5rem;">Aprobado: ${new Date(cr.fecha).toLocaleDateString()} | Cuotas: ${cr.frec}</p><div style="background: #f9fafb; padding: 0.75rem; border-radius: 0.5rem; display: flex; justify-content: space-between; align-items: center;"><span style="font-size: 0.875rem; font-weight: bold; color: #4b5563;">Deuda Restante:</span><b style="font-size: 1.25rem; color: ${cr.saldo > 0 ? '#ef4444' : '#22c55e'};">$${cr.saldo.toFixed(2)}</b></div></div>`;
+                    if (cr.saldo > 0) htmlActivos += tarjetaHtml; else htmlFinalizados += tarjetaHtml;
+                });
+            }
+
+            if (miPerfil.historial && miPerfil.historial.length > 0) {
+                [...miPerfil.historial].reverse().forEach(pago => { htmlPagos += `<div style="display: flex; justify-content: space-between; padding: 1rem; border-bottom: 1px solid #f3f4f6;"><div><span style="font-size: 0.875rem; font-weight: bold; color: #1f2937;">Abono a Deuda</span><br><span style="font-size: 0.75rem; color: #9ca3af;">${pago.fecha}</span></div><b style="font-size: 1.125rem; color: #22c55e;">+$${(pago.monto || 0).toFixed(2)}</b></div>`; });
+            } else { htmlPagos = '<div style="padding: 2rem; text-align: center; color: #9ca3af; font-size: 0.875rem;">Aún no tienes pagos registrados.</div>'; }
+
+            if (htmlActivos === '') htmlActivos = '<div class="card" style="text-align:center; color:#9ca3af; font-size:0.875rem;">No tienes créditos activos.</div>';
+            if (htmlFinalizados === '') htmlFinalizados = '<div class="card" style="text-align:center; color:#9ca3af; font-size:0.875rem;">No tienes créditos finalizados aún.</div>';
+
+            document.getElementById('ui-saldo-global').innerText = `$${saldoTotal.toFixed(2)}`;
+            document.getElementById('lista-activos').innerHTML = htmlActivos;
+            document.getElementById('lista-finalizados').innerHTML = htmlFinalizados;
+            document.getElementById('lista-pagos').innerHTML = htmlPagos;
+        }
+    </script>
+</body>
+</html>
